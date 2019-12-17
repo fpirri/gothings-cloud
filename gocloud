@@ -1,9 +1,12 @@
 #!/bin/bash
 #                                                                    2019-07-19
 #  Control menu script for GOTHINGS CLOUD system
-                                                                 VERSION="0.00.03"
+                                                                 VERSION="0.00.04"
 #
-#  Menu per l'inizializzazione del sistema gothings
+#  Menu per la gestione del sistema gothings
+#
+#  - download:
+#      wget -O gocloud https://github.com/fpirri/gothings-cloud/blob/master/gocloud
 #
 #
 # download effettuati (version 0.00.02):
@@ -16,7 +19,7 @@
 #
 #############
 #
-#   wget -O gocloud ....../gothings/cloud/gocloud                                 ???
+#   wget -O gocloud https://github.com/fpirri/gothings-cloud/raw/master/gocloud
 #
 #    /home/superman/NetBeansProjects/WP-Sviluppi/gothings/cloud/gocloud
 #
@@ -38,7 +41,7 @@
 #########
 #==============================================================================
 echo
-echo "====================================================== GOTHINGS for raspi"
+echo "====================================================== GOTHINGS for cloud"
 echo "      Control loader for GOTHINGS CLOUD docker system."
 echo "========================================================================="
 echo
@@ -399,7 +402,7 @@ verifycloudinstall() {
   #  error details in:  .../github-gothings/README.github.gothings
   #
   #  il dir .../dockimages/cloud DEVE contenere il file di configurazione cloudinstall.json
-  #  il .json mantiene lo stus dell'installazione ( todo / done )
+  #  il .json mantiene lo status dell'installazione ( todo / done )
   #
   #
   local filejson status script temp nvar
@@ -489,6 +492,107 @@ verifycloudinstall() {
   return 0
 }
 #
+##########################################################################       versione 2019-11-20
+verifycloudinit() {
+  #  si verifica cloudinit.json per vedere se c'e' una inizializzazione da fare,
+  #  ovvero se e' gia' fatta o non e' comunque necessaria:
+  #
+  #  ritorna 0 se l'operazione non ha prodotto errori
+  #          1 se ci sono stati errori ...
+  #
+  #  error details in:  .../github-gothings/README.github.gothings
+  #
+  #  il dir .../dockimages/cloud DEVE contenere il file di configurazione cloudinit.json
+  #  il .json mantiene lo status dell'inizializzazione ( todo / done )
+  #
+  #
+  local filejson status script temp nvar
+  filejson="${HOMEDIR}dockrepo/dockimages/cloud/cloudinit.json"
+  #  file github:
+  #    https://github.com/fpirri/gothings-cloud/blob/master/dockrepo/dockimages/cloud/cloudinit.json
+  #
+  echo "    <-- configuration data read from ${filejson}"
+  ################## ???  script="${HOMEDIR}dockrepo/sysdata/cloud/cloudinit.sh"
+  #
+  temp=($(cat "${filejson}" | jq -r '.status,.script'))
+  # aggiusta le variabili, se necessario
+  nvar=0
+  status=${temp[0]}
+  json2string status
+  (( nvar += $? ))
+  script=${temp[1]}
+  json2string script
+  (( nvar += $? ))
+  if [[ "${nvar}" -ne 2 ]]; then
+    debuglog="ERROR 1 - JSON file ${filejson} returned some null values"
+    bugmessage ERROR 1 "    JSON returned invalid values"
+    return 1 #                                                                 ERROR 1: Invalid JSON
+  fi
+  echo "    <-- non-null variables: ${nvar}"
+  # verifica stringhe nulle
+  #echo "Lunghezze ---  temp: ${#temp} | status: ${#status} | script: ${#script}"
+  temp=$((${#temp} * ${#status} * ${#script}))
+  if [[ "${temp}" -eq 0 ]]; then
+    debuglog="ERROR 2 - JSON returned empty string"
+    bugmessage ERROR 2 "    JSON file ${filejson} returned empty string"
+    return 2 #                                                                 ERROR 2: Invalid JSON
+  fi
+  # verifica la variabile status
+  echo "    <-- read status from json file ${filejson}"
+  debuglog="|| verify init |"
+  case "${status}" in
+    todo) #                                                                       init cloud to do
+      if [[ -s "${script}" ]]; then # file exists and length > 0
+        debuglog="|${debuglog}| ${script} esiste |"
+      else
+        debuglog="|${debuglog}| init script ${script} not found |"
+        bugmessage ERROR 66 "    file not found"
+        return 66 #                                                 il file non esiste  -->  ERRORE 4
+      fi
+      ######################## do init :
+      echo "    <-- exec ${script} ..."
+      . ${script} # esegui lo script di init
+      temp=$?
+      echo
+      echo "    <-- ${script} return code: ${temp}"
+      if [ "${temp}" -gt 0 ]; then # errore nello script
+        debuglog="|${debuglog}| init script error: ${temp} |"
+        bugmessage ERROR "${temp}" "    script execution error"
+        return "${temp}"
+      else
+        # init done : update .json file
+        echo
+        echo "    <-- update .json status from 'todo' to 'done'"
+        echo "$(cat "${filejson}" | jq -r '.status |= "done"')" > "${filejson}.new"
+        temp=$?
+        echo "    <-- save existing file into 'old'"
+        cp -r "${filejson}"  "${filejson}.old"
+        echo "    <-- copy 'new' file onto cloudinit.json"
+        cp -r "${filejson}.new"  "${filejson}"
+        echo -n "    <-- verify cloudinit.json status : "
+        temp=($(cat ${filejson} | jq -r '.status'))
+        echo ${temp}
+        # temp=($(cat /home/pi/dockrepo/dockimages/cloud/cloudinit.json | jq -r '.status'))
+        if [ "${temp}" != "done" ]; then
+          bugmessage ERROR 5 "    ERROR : can't update ${filejson} file"
+          return 5 #                                         update JSON file failed!  -->  ERRORE 5
+        fi
+      fi
+      echo "    <-- .json status update OK"
+      echo "    ------------------------------"
+      ;;
+    done)
+      echo "    OK - init not required"
+      ;;
+    *)
+      bugmessage ERROR 3 "    ERROR 3 - JSON status value is invalid"
+      return 0
+      ;; #                                                                     ERROR 3: Invalid JSON
+  esac
+  echo "    INIT phase OK"
+  return 0
+}
+#
 #
 ##########################################################################
 ##########################################################################
@@ -505,7 +609,7 @@ verifycloudinstall() {
 ############################################################### MAIN LOGIC
 ##########################################################################
 echo
-echo "Verify GOTHINGS CLOUD installation ..."
+echo "Verify GOTHINGS CLOUD software installation ..."
 #
 echo "    verify software download ..."
 #
@@ -525,6 +629,51 @@ fi
 if [[ ! -s "${HOMEDIR}dockrepo/sysdata/cloud" ]]; then
   mkdir dockrepo/sysdata/cloud
 fi
+######################  phase INIT
+echo
+echo "    INIT phase starts ..."
+echo
+echo "    verify json init config file ..."
+#
+FILECONF="${INSTALLDIR}cloudinit.json"       #  file di configurazione della fase expand
+# assicurati che il file di configurazione esista
+getgitfile "cloudinit.json" "gothings-cloud/master/" "dockrepo/dockimages/cloud/"
+ITEXISTS=$?
+if [[ $ITEXISTS -ne 1 ]]; then
+  echo "      <-- configuration init file DOES NOT exists."
+  stopmenu "${FILECONF}"  "file ${FILECONF} is essential for GoThings CLOUD"
+  exit                       # interrommpere il menu principale
+fi
+echo "      <-- exists, verifying content ..." 
+verifycloudinit
+#
+#----  verifica parte init
+# - si verifica cloudinit.json per vedere se c'e' da fare una inizializzazione,
+#    ovvero se e' gia' fatta o non e' comunque necessaria:
+#
+#  ritorna:  0  se l'operazione init non ha prodotto errori
+#           !0  se ci sono stati errori ...
+#
+#  error details in:  .../github-gothings/README.github.gothings
+#
+RETLEVEL=$?
+echo "    <-- init phase returns code ${RETLEVEL}"
+if [ ${RETLEVEL} -gt 0 ]; then
+  debuglog="Init phase not good"
+  if [ ${RETLEVEL} -lt 50 ]; then
+    echo
+    bugmessage ERROR "${RETLEVEL}" "    init phase"
+  else
+    echo
+    bugmessage ERROR "${RETLEVEL}" "    init phase"
+  fi
+  MENUTRAP=${RETLEVEL}
+  pause
+  exit ${MENUTRAP}
+fi
+echo "    INIT phase done."
+#
+echo
 ######################  phase EXPAND
 echo
 echo "    EXPAND phase starts ..."
