@@ -440,6 +440,7 @@ verifycloudinstall() {
   echo "    <-- read status from json file ${filejson}"
   echo "status: ${status}"
   echo "script: ${script}"
+  pwd
   cat ${script}
   echo "---- boh!"
   sleep 2
