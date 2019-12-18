@@ -405,7 +405,7 @@ verifycloudinstall() {
   #  il .json mantiene lo status dell'installazione ( todo / done )
   #
   #
-  local filejson status script temp nvar
+  local filejson status script temp nvar xscript
   filejson="${HOMEDIR}dockrepo/dockimages/cloud/cloudinstall.json"
   #  file github:
   #    https://github.com/fpirri/gothings-cloud/blob/master/dockrepo/dockimages/cloud/cloudinstall.json
@@ -439,27 +439,24 @@ verifycloudinstall() {
   # verifica la variabile status
   echo "    <-- read status from json file ${filejson}"
   echo "status: ${status}"
-  echo "script: ${script}"
-  pwd
-  cat ${script}
-  echo "---- boh!"
-  sleep 2
+  xscript="${HOMEDIR}${script}"
+  echo "xscript: ${xscript}"
   debuglog="|| verify install |"
   case "${status}" in
     todo) #                                                                       install cloud to do
-      if [[ -s "${script}" ]]; then # file exists and length > 0
-        debuglog="${debuglog}| ${script} esiste |"
+      if [[ -s "${xscript}" ]]; then # file exists and length > 0
+        debuglog="${debuglog}| ${xscript} esiste |"
       else
-        debuglog="${debuglog}| install script ${script} not found |"
+        debuglog="${debuglog}| install script ${xscript} not found |"
         bugmessage ERROR 66 "    file not found"
         return 66 #                                                 il file non esiste  -->  ERRORE 4
       fi
       ######################## do install :
-      echo "    <-- exec ${script} ..."
-      . ${script} # esegui lo script di install
+      echo "    <-- exec ${xscript} ..."
+      . ${xscript} # esegui lo script di install
       temp=$?
       echo
-      echo "    <-- ${script} return code: ${temp}"
+      echo "    <-- ${xscript} return code: ${temp}"
       if [ "${temp}" -gt 0 ]; then # errore nello script
         debuglog="|${debuglog}| install script error: ${temp} |"
         bugmessage ERROR "${temp}" "    script execution error"
