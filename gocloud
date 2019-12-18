@@ -1,7 +1,7 @@
 #!/bin/bash
 #                                                                    2019-07-19
 #  Control menu script for GOTHINGS CLOUD system
-                                                                 VERSION="0.00.04"
+                                                                 VERSION="0.00.05"
 #
 #  Menu per la gestione del sistema gothings
 #
@@ -629,51 +629,6 @@ fi
 if [[ ! -s "${HOMEDIR}dockrepo/sysdata/cloud" ]]; then
   mkdir dockrepo/sysdata/cloud
 fi
-######################  phase INIT
-echo
-echo "    INIT phase starts ..."
-echo
-echo "    verify json init config file ..."
-#
-FILECONF="${INSTALLDIR}cloudinit.json"       #  file di configurazione della fase expand
-# assicurati che il file di configurazione esista
-getgitfile "cloudinit.json" "gothings-cloud/master/" "dockrepo/dockimages/cloud/"
-ITEXISTS=$?
-if [[ $ITEXISTS -ne 1 ]]; then
-  echo "      <-- configuration init file DOES NOT exists."
-  stopmenu "${FILECONF}"  "file ${FILECONF} is essential for GoThings CLOUD"
-  exit                       # interrommpere il menu principale
-fi
-echo "      <-- exists, verifying content ..." 
-verifycloudinit
-#
-#----  verifica parte init
-# - si verifica cloudinit.json per vedere se c'e' da fare una inizializzazione,
-#    ovvero se e' gia' fatta o non e' comunque necessaria:
-#
-#  ritorna:  0  se l'operazione init non ha prodotto errori
-#           !0  se ci sono stati errori ...
-#
-#  error details in:  .../github-gothings/README.github.gothings
-#
-RETLEVEL=$?
-echo "    <-- init phase returns code ${RETLEVEL}"
-if [ ${RETLEVEL} -gt 0 ]; then
-  debuglog="Init phase not good"
-  if [ ${RETLEVEL} -lt 50 ]; then
-    echo
-    bugmessage ERROR "${RETLEVEL}" "    init phase"
-  else
-    echo
-    bugmessage ERROR "${RETLEVEL}" "    init phase"
-  fi
-  MENUTRAP=${RETLEVEL}
-  pause
-  exit ${MENUTRAP}
-fi
-echo "    INIT phase done."
-#
-echo
 ######################  phase EXPAND
 echo
 echo "    EXPAND phase starts ..."
@@ -717,6 +672,51 @@ if [ ${RETLEVEL} -gt 0 ]; then
   exit ${MENUTRAP}
 fi
 echo "    EXPAND phase done."
+#
+echo
+######################  phase INIT
+echo
+echo "    INIT phase starts ..."
+echo
+echo "    verify json init config file ..."
+#
+FILECONF="${INSTALLDIR}cloudinit.json"       #  file di configurazione della fase expand
+# assicurati che il file di configurazione esista
+getgitfile "cloudinit.json" "gothings-cloud/master/" "dockrepo/dockimages/cloud/"
+ITEXISTS=$?
+if [[ $ITEXISTS -ne 1 ]]; then
+  echo "      <-- configuration init file DOES NOT exists."
+  stopmenu "${FILECONF}"  "file ${FILECONF} is essential for GoThings CLOUD"
+  exit                       # interrommpere il menu principale
+fi
+echo "      <-- exists, verifying content ..." 
+verifycloudinit
+#
+#----  verifica parte init
+# - si verifica cloudinit.json per vedere se c'e' da fare una inizializzazione,
+#    ovvero se e' gia' fatta o non e' comunque necessaria:
+#
+#  ritorna:  0  se l'operazione init non ha prodotto errori
+#           !0  se ci sono stati errori ...
+#
+#  error details in:  .../github-gothings/README.github.gothings
+#
+RETLEVEL=$?
+echo "    <-- init phase returns code ${RETLEVEL}"
+if [ ${RETLEVEL} -gt 0 ]; then
+  debuglog="Init phase not good"
+  if [ ${RETLEVEL} -lt 50 ]; then
+    echo
+    bugmessage ERROR "${RETLEVEL}" "    init phase"
+  else
+    echo
+    bugmessage ERROR "${RETLEVEL}" "    init phase"
+  fi
+  MENUTRAP=${RETLEVEL}
+  pause
+  exit ${MENUTRAP}
+fi
+echo "    INIT phase done."
 #
 echo
 ######################  phase INSTALL
