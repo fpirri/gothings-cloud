@@ -440,6 +440,9 @@ verifycloudinstall() {
   echo "    <-- read status from json file ${filejson}"
   echo "status: ${status}"
   echo "script: ${script}"
+  cat ${script}
+  echo "---- boh!"
+  sleep 2
   debuglog="|| verify install |"
   case "${status}" in
     todo) #                                                                       install cloud to do
