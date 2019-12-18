@@ -438,13 +438,15 @@ verifycloudinstall() {
   fi
   # verifica la variabile status
   echo "    <-- read status from json file ${filejson}"
+  echo "status: ${status}"
+  echo "script: ${script}"
   debuglog="|| verify install |"
   case "${status}" in
     todo) #                                                                       install cloud to do
       if [[ -s "${script}" ]]; then # file exists and length > 0
-        debuglog="|${debuglog}| ${script} esiste |"
+        debuglog="${debuglog}| ${script} esiste |"
       else
-        debuglog="|${debuglog}| install script ${script} not found |"
+        debuglog="${debuglog}| install script ${script} not found |"
         bugmessage ERROR 66 "    file not found"
         return 66 #                                                 il file non esiste  -->  ERRORE 4
       fi
