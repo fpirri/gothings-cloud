@@ -1178,7 +1178,6 @@ if [ ${RETLEVEL} -gt 0 ]; then
   pause
   exit ${MENUTRAP}
 fi
-pause
 echo
 #
 echo
@@ -1213,7 +1212,6 @@ if [ ${RETLEVEL} -gt 0 ]; then
   pause
   exit ${MENUTRAP}
 fi
-pause
 #
 echo
 echo "##################################################  HTDOCS"
@@ -1247,7 +1245,6 @@ if [ ${RETLEVEL} -gt 0 ]; then
   pause
   exit ${MENUTRAP}
 fi
-pause
 echo
 echo "############################"
 echo "          EXPAND phase done."
