@@ -1,7 +1,7 @@
 #!/bin/bash
 #                                                                    2019-07-19
 #  Control menu script for GOTHINGS CLOUD system
-                                                                 VERSION="0.00.06"
+                                                                 VERSION="0.00.07"
 #
 #  Menu per la gestione del sistema gothings
 #
@@ -17,10 +17,11 @@
 # clouddirs:
 #   https://github.com/fpirri/gothings-cloud/blob/master/dockrepo/sysarchive/clouddirs.tar.gz?raw=true
 #
-#############
+############
 #
+# dpwnload:
 #   wget -O gocloud https://github.com/fpirri/gothings-cloud/raw/master/gocloud
-#
+# netbeans:
 #    /home/superman/NetBeansProjects/WP-Sviluppi/gothings/cloud/gocloud
 #
 #==============================================================================
@@ -596,6 +597,369 @@ verifycloudinit() {
   return 0
 }
 #
+##########################################################################       versione 2019-11-20
+verifyredisexpand() {
+  #  si verifica redisexpand.json per vedere se l'espansione e' da fare,
+  #  ovvero se e' gia' fatta o non e' comunque necessaria:
+  #
+  #  ritorna 0 se l'operazione non ha prodotto errori
+  #          1 se ci sono stati errori ...
+  #
+  #  error details in:  .../github-gothings/README.github.gothings
+  #
+  #  NON si aggiungono i files redisexpand.sh e .tar.gz perche' redis NON richiede inizializzazione
+  #  TUTTE le info necessarie sono nel .json
+  #
+  local filejson status filetargz githubgzfile script temp debuglog nvar
+  filejson="${HOMEDIR}dockrepo/dockimages/redis/redisexpand.json"
+  #
+  # verifica (& caricamento eventuale) esistenza file redisexpand.json
+  echo "    verify redis json expand config file ..."
+  #
+  FILECONF="${HOMEDIR}dockrepo/dockimages/redis/redisexpand.json"       #  file di configurazione della fase expand
+  # assicurati che il file di configurazione esista
+  getgitfile "redisexpand.json" "gothings-cloud/master/" "dockrepo/dockimages/redis/"
+  ITEXISTS=$?
+  if [[ $ITEXISTS -ne 1 ]]; then
+    echo "      <-- configuration install file DOES NOT exists."
+    stopmenu "${FILECONF}"  "file ${FILECONF} is essential for GoThings CLOUD"
+    exit                       # interrommpere il menu principale
+  fi
+  echo "      <-- exists, verifying content ..." 
+  #
+  echo "    <-- configuration data read from ${filejson}"
+  temp=($(cat "${filejson}" | jq -r '.status,.filetargz,.githubgzfile,.script'))
+  # verifica che sono tornate effettivamente 4 variabili & non ci sono null
+  echo "    <--       status: ${temp[0]}"
+  echo "    <--   filetar.gz: ${temp[1]}"
+  echo "    <-- githubgzfile: ${temp[2]}"
+  echo "    <--       script: ${temp[3]}"
+  # aggiusta le variabili, se necessario
+  nvar=0
+  status=${temp[0]}
+  json2string status
+  (( nvar += $? ))
+  filetargz=${temp[1]}
+  json2string filetargz
+  (( nvar += $? ))
+  githubgzfile=${temp[2]}
+  json2string githubgzfile
+  (( nvar += $? ))
+  if [[ "${nvar}" -ne 3 ]]; then
+    debuglog="ERROR 1 - JSON file ${filejson} returned some null values"
+    bugmessage ERROR 1 "    JSON returned invalid values"
+    return 1 #                                                                 ERROR 1: Invalid JSON
+  fi
+  echo "    <-- non-null variables: ${nvar}"
+  # verifica stringhe nulle
+  temp=$((${#temp} * ${#status} * ${#filetargz} * ${#githubgzfile}))
+  if [[ "${temp}" -eq 0 ]]; then
+    debuglog="ERROR 2 - JSON returned empty string"
+    bugmessage ERROR 2 "    JSON file ${filejson} returned empty string"
+    return 2 #                                                                 ERROR 2: Invalid JSON
+  fi
+  # valori apparentemente accettabili, andiamo avanti
+  echo "    <-- variable types OK"
+  filetargz="${HOMEDIR}${filetargz}"
+  echo "    <-- sysdata for CLOUD environment read from ${filetargz}"
+  debuglog="|| verify expand |"
+  case "${status}" in
+    todo) #                                      expand archive .tar.gz
+      echo "    <--  expand to be done"
+      if [[ -s "${filetargz}" ]]; then # file exists and length > 0
+        debuglog="${debuglog}| ${filetargz} esiste |"
+      else #                             il file non esiste, proviamo a scaricarlo
+        debuglog="${debuglog}| ${filetargz} does not exist | download githubgzfile: ${githubgzfile} |"
+        wget -O "${filetargz}" "${githubgzfile}"
+        if [[ -s "${filetargz}" ]]; then
+          debuglog="${debuglog}| ${filetargz} trovato |" #  il file e' stato trovato e verra' espanso
+          echo "    <--  archive file exists"
+        else
+          debuglog="{$debuglog}| ${filetargz} introvabile |"
+          bugmessage ERROR 66 "    file not found"
+          return 66
+        fi
+      fi
+      echo "    <--  expand archive file"
+      sudo tar xpf "${filetargz}" -C "$HOMEDIR" #   si espande l'archivio
+      temp=$?
+      if [[ ! $temp -eq 0 ]]; then
+        debuglog="{$debuglog}| ${filetargz} expansion failed! - return: ${temp} | ERROR 66"
+        bugmessage ERROR 66 "    archive expansion failed"
+        return 66
+      fi
+      # espansione effettuata:  aggiorna il .json
+      echo
+      echo "    <-- expand OK, change .json status from 'todo' to 'done'"
+      echo "$(cat "${filejson}" | jq -r '.status |= "done"')" > "${filejson}.new"
+      temp=$?
+      echo "    <-- save existing file into 'old'"
+      cp -r "${filejson}"  "${filejson}.old"
+      echo "    <-- copy 'new' file onto redisexpand.json"
+      cp -r "${filejson}.new"  "${filejson}"
+      echo -n "    <-- verify redisexpand.json status :"
+      temp=($(cat ${filejson} | jq -r '.status'))
+      echo ${temp}
+      if [ "${temp}" != "done" ]; then
+        bugmessage WARNING 5 "    ERROR : can't update ${filejson} file"
+        return 5
+      fi
+      echo "    <-- .json status update OK"
+      echo "    ------------------------------"
+      ;;
+    done)
+      echo "    <-- expand not needed"
+      ;;
+    *)
+      bugmessage WARNING 3 "    ERROR 3 - JSON status value is invalid"
+      return 3
+      ;;
+  esac
+  return 0
+}
+#
+##########################################################################       versione 2019-11-20
+verifynginxexpand() {
+  #  si verifica nginxexpand.json per vedere se l'espansione e' da fare,
+  #  ovvero se e' gia' fatta o non e' comunque necessaria:
+  #
+  #  ritorna 0 se l'operazione non ha prodotto errori
+  #          1 se ci sono stati errori ...
+  #
+  #  error details in:  .../github-gothings/README.github.gothings
+  #
+  #  NON si aggiungono i files nginxexpand.sh e .tar.gz perche' nginx NON richiede inizializzazione
+  #  TUTTE le info necessarie sono nel .json
+  #
+  local filejson status filetargz githubgzfile script temp debuglog nvar
+  filejson="${HOMEDIR}dockrepo/dockimages/nginx/nginxexpand.json"
+  #
+  # verifica (& caricamento eventuale) esistenza file nginxexpand.json
+  echo "    verify nginx json expand config file ..."
+  #
+  FILECONF="${HOMEDIR}dockrepo/dockimages/nginx/nginxexpand.json"       #  file di configurazione della fase expand
+  # assicurati che il file di configurazione esista
+  getgitfile "nginxexpand.json" "gothings-cloud/master/" "dockrepo/dockimages/nginx/"
+  ITEXISTS=$?
+  if [[ $ITEXISTS -ne 1 ]]; then
+    echo "      <-- configuration install file DOES NOT exists."
+    stopmenu "${FILECONF}"  "file ${FILECONF} is essential for GoThings CLOUD"
+    exit                       # interrommpere il menu principale
+  fi
+  echo "      <-- exists, verifying content ..." 
+  #
+  echo "    <-- configuration data read from ${filejson}"
+  temp=($(cat "${filejson}" | jq -r '.status,.filetargz,.githubgzfile,.script'))
+  # verifica che sono tornate effettivamente 4 variabili & non ci sono null
+  echo "    <--       status: ${temp[0]}"
+  echo "    <--   filetar.gz: ${temp[1]}"
+  echo "    <-- githubgzfile: ${temp[2]}"
+  echo "    <--       script: ${temp[3]}"
+  # aggiusta le variabili, se necessario
+  nvar=0
+  status=${temp[0]}
+  json2string status
+  (( nvar += $? ))
+  filetargz=${temp[1]}
+  json2string filetargz
+  (( nvar += $? ))
+  githubgzfile=${temp[2]}
+  json2string githubgzfile
+  (( nvar += $? ))
+  if [[ "${nvar}" -ne 3 ]]; then
+    debuglog="ERROR 1 - JSON file ${filejson} returned some null values"
+    bugmessage ERROR 1 "    JSON returned invalid values"
+    return 1 #                                                                 ERROR 1: Invalid JSON
+  fi
+  echo "    <-- non-null variables: ${nvar}"
+  # verifica stringhe nulle
+  temp=$((${#temp} * ${#status} * ${#filetargz} * ${#githubgzfile}))
+  if [[ "${temp}" -eq 0 ]]; then
+    debuglog="ERROR 2 - JSON returned empty string"
+    bugmessage ERROR 2 "    JSON file ${filejson} returned empty string"
+    return 2 #                                                                 ERROR 2: Invalid JSON
+  fi
+  # valori apparentemente accettabili, andiamo avanti
+  echo "    <-- variable types OK"
+  filetargz="${HOMEDIR}${filetargz}"
+  echo "    <-- sysdata for CLOUD environment read from ${filetargz}"
+  debuglog="|| verify expand |"
+  case "${status}" in
+    todo) #                                      expand archive .tar.gz
+      echo "    <--  expand to be done"
+      if [[ -s "${filetargz}" ]]; then # file exists and length > 0
+        debuglog="${debuglog}| ${filetargz} esiste |"
+      else #                             il file non esiste, proviamo a scaricarlo
+        debuglog="${debuglog}| ${filetargz} does not exist | download githubgzfile: ${githubgzfile} |"
+        wget -O "${filetargz}" "${githubgzfile}"
+        if [[ -s "${filetargz}" ]]; then
+          debuglog="${debuglog}| ${filetargz} trovato |" #  il file e' stato trovato e verra' espanso
+          echo "    <--  archive file exists"
+        else
+          debuglog="{$debuglog}| ${filetargz} introvabile |"
+          bugmessage ERROR 66 "    file not found"
+          return 66
+        fi
+      fi
+      echo "    <--  expand archive file"
+      sudo tar xpf "${filetargz}" -C "$HOMEDIR" #   si espande l'archivio
+      temp=$?
+      if [[ ! $temp -eq 0 ]]; then
+        debuglog="{$debuglog}| ${filetargz} expansion failed! - return: ${temp} | ERROR 66"
+        bugmessage ERROR 66 "    archive expansion failed"
+        return 66
+      fi
+      # espansione effettuata:  aggiorna il .json
+      echo
+      echo "    <-- expand OK, change .json status from 'todo' to 'done'"
+      echo "$(cat "${filejson}" | jq -r '.status |= "done"')" > "${filejson}.new"
+      temp=$?
+      echo "    <-- save existing file into 'old'"
+      cp -r "${filejson}"  "${filejson}.old"
+      echo "    <-- copy 'new' file onto nginxexpand.json"
+      cp -r "${filejson}.new"  "${filejson}"
+      echo -n "    <-- verify nginxexpand.json status :"
+      temp=($(cat ${filejson} | jq -r '.status'))
+      echo ${temp}
+      if [ "${temp}" != "done" ]; then
+        bugmessage WARNING 5 "    ERROR : can't update ${filejson} file"
+        return 5
+      fi
+      echo "    <-- .json status update OK"
+      echo "    ------------------------------"
+      ;;
+    done)
+      echo "    <-- expand not needed"
+      ;;
+    *)
+      bugmessage WARNING 3 "    ERROR 3 - JSON status value is invalid"
+      return 3
+      ;;
+  esac
+  return 0
+}
+#
+##########################################################################       versione 2019-11-20
+verifyhtdocsexpand() {
+  #  si verifica htdocsexpand.json per vedere se l'espansione e' da fare,
+  #  ovvero se e' gia' fatta o non e' comunque necessaria:
+  #
+  #  ritorna 0 se l'operazione non ha prodotto errori
+  #          1 se ci sono stati errori ...
+  #
+  #  error details in:  .../github-gothings/README.github.gothings
+  #
+  #  NON si aggiungono i files htdocsexpand.sh e .tar.gz perche' htdocs NON richiede inizializzazione
+  #  TUTTE le info necessarie sono nel .json
+  #
+  local filejson status filetargz githubgzfile script temp debuglog nvar
+  filejson="${HOMEDIR}dockrepo/dockimages/htdocs/htdocsexpand.json"
+  #
+  # verifica (& caricamento eventuale) esistenza file htdocsexpand.json
+  echo "    verify htdocs json expand config file ..."
+  #
+  FILECONF="${HOMEDIR}dockrepo/dockimages/htdocs/htdocsexpand.json"       #  file di configurazione della fase expand
+  # assicurati che il file di configurazione esista
+  getgitfile "htdocsexpand.json" "gothings-cloud/master/" "dockrepo/dockimages/htdocs/"
+  ITEXISTS=$?
+  if [[ $ITEXISTS -ne 1 ]]; then
+    echo "      <-- configuration install file DOES NOT exists."
+    stopmenu "${FILECONF}"  "file ${FILECONF} is essential for GoThings CLOUD"
+    exit                       # interrommpere il menu principale
+  fi
+  echo "      <-- exists, verifying content ..." 
+  #
+  echo "    <-- configuration data read from ${filejson}"
+  temp=($(cat "${filejson}" | jq -r '.status,.filetargz,.githubgzfile,.script'))
+  # verifica che sono tornate effettivamente 4 variabili & non ci sono null
+  echo "    <--       status: ${temp[0]}"
+  echo "    <--   filetar.gz: ${temp[1]}"
+  echo "    <-- githubgzfile: ${temp[2]}"
+  echo "    <--       script: ${temp[3]}"
+  # aggiusta le variabili, se necessario
+  nvar=0
+  status=${temp[0]}
+  json2string status
+  (( nvar += $? ))
+  filetargz=${temp[1]}
+  json2string filetargz
+  (( nvar += $? ))
+  githubgzfile=${temp[2]}
+  json2string githubgzfile
+  (( nvar += $? ))
+  if [[ "${nvar}" -ne 3 ]]; then
+    debuglog="ERROR 1 - JSON file ${filejson} returned some null values"
+    bugmessage ERROR 1 "    JSON returned invalid values"
+    return 1 #                                                                 ERROR 1: Invalid JSON
+  fi
+  echo "    <-- non-null variables: ${nvar}"
+  # verifica stringhe nulle
+  temp=$((${#temp} * ${#status} * ${#filetargz} * ${#githubgzfile}))
+  if [[ "${temp}" -eq 0 ]]; then
+    debuglog="ERROR 2 - JSON returned empty string"
+    bugmessage ERROR 2 "    JSON file ${filejson} returned empty string"
+    return 2 #                                                                 ERROR 2: Invalid JSON
+  fi
+  # valori apparentemente accettabili, andiamo avanti
+  echo "    <-- variable types OK"
+  filetargz="${HOMEDIR}${filetargz}"
+  echo "    <-- sysdata for CLOUD environment read from ${filetargz}"
+  debuglog="|| verify expand |"
+  case "${status}" in
+    todo) #                                      expand archive .tar.gz
+      echo "    <--  expand to be done"
+      if [[ -s "${filetargz}" ]]; then # file exists and length > 0
+        debuglog="${debuglog}| ${filetargz} esiste |"
+      else #                             il file non esiste, proviamo a scaricarlo
+        debuglog="${debuglog}| ${filetargz} does not exist | download githubgzfile: ${githubgzfile} |"
+        wget -O "${filetargz}" "${githubgzfile}"
+        if [[ -s "${filetargz}" ]]; then
+          debuglog="${debuglog}| ${filetargz} trovato |" #  il file e' stato trovato e verra' espanso
+          echo "    <--  archive file exists"
+        else
+          debuglog="{$debuglog}| ${filetargz} introvabile |"
+          bugmessage ERROR 66 "    file not found"
+          return 66
+        fi
+      fi
+      echo "    <--  expand archive file"
+      sudo tar xpf "${filetargz}" -C "$HOMEDIR" #   si espande l'archivio
+      temp=$?
+      if [[ ! $temp -eq 0 ]]; then
+        debuglog="{$debuglog}| ${filetargz} expansion failed! - return: ${temp} | ERROR 66"
+        bugmessage ERROR 66 "    archive expansion failed"
+        return 66
+      fi
+      # espansione effettuata:  aggiorna il .json
+      echo
+      echo "    <-- expand OK, change .json status from 'todo' to 'done'"
+      echo "$(cat "${filejson}" | jq -r '.status |= "done"')" > "${filejson}.new"
+      temp=$?
+      echo "    <-- save existing file into 'old'"
+      cp -r "${filejson}"  "${filejson}.old"
+      echo "    <-- copy 'new' file onto htdocsexpand.json"
+      cp -r "${filejson}.new"  "${filejson}"
+      echo -n "    <-- verify htdocsexpand.json status :"
+      temp=($(cat ${filejson} | jq -r '.status'))
+      echo ${temp}
+      if [ "${temp}" != "done" ]; then
+        bugmessage WARNING 5 "    ERROR : can't update ${filejson} file"
+        return 5
+      fi
+      echo "    <-- .json status update OK"
+      echo "    ------------------------------"
+      ;;
+    done)
+      echo "    <-- expand not needed"
+      ;;
+    *)
+      bugmessage WARNING 3 "    ERROR 3 - JSON status value is invalid"
+      return 3
+      ;;
+  esac
+  return 0
+}
+#
 ##########################################################################
 startcloud() {
   #  Start base subsystem
@@ -736,11 +1100,14 @@ fi
 if [[ ! -s "${HOMEDIR}dockrepo/sysdata/cloud" ]]; then
   mkdir dockrepo/sysdata/cloud
 fi
-######################  phase EXPAND
+#
+#################################################################################
+###################################################################  phase EXPAND
 echo
 echo "    EXPAND phase starts ..."
 echo
-echo "    verify json expand config file ..."
+echo "########################################  CLOUD"
+echo "     verify cloud json expand config file ..."
 #
 FILECONF="${INSTALLDIR}cloudexpand.json"       #  file di configurazione della fase expand
 # assicurati che il file di configurazione esista
@@ -778,10 +1145,116 @@ if [ ${RETLEVEL} -gt 0 ]; then
   pause
   exit ${MENUTRAP}
 fi
-echo "    EXPAND phase done."
 #
 echo
-######################  phase INIT
+echo "###################################################  REDIS"
+echo "        verify cloud redis json expand config file ..."
+# assicurati che il dir redis esista in dockimages
+if [[ ! -s "${HOMEDIR}dockrepo/dockimages/redis" ]]; then
+  mkdir dockrepo/dockimages/redis
+fi
+#
+verifyredisexpand
+# - si verifica redisinstall.json per vedere se l'espansione e' da fare,
+#    ovvero se e' gia' fatta o non e' comunque necessaria:
+#
+#  ritorna:  0  se l'operazione expand non ha prodotto errori
+#           !0  se ci sono stati errori ...
+#
+#  error details in:  .../github-gothings/README.github.gothings
+#
+RETLEVEL=$?
+echo "    <-- expand phase returns code ${RETLEVEL}"
+if [ ${RETLEVEL} -gt 0 ]; then
+  debuglog="Expand phase not good"
+  if [ ${RETLEVEL} -lt 50 ]; then
+    echo
+    bugmessage ERROR "${RETLEVEL}" "    expand phase"
+  else
+    echo
+    bugmessage ERROR "${RETLEVEL}" "    expand phase"
+  fi
+  MENUTRAP=${RETLEVEL}
+  pause
+  exit ${MENUTRAP}
+fi
+pause
+echo
+#
+echo
+echo "##################################################  NGINX"
+echo "        verify cloud nginx json expand config file ..."
+# assicurati che il dir nginx esista in dockimages
+if [[ ! -s "${HOMEDIR}dockrepo/dockimages/nginx" ]]; then
+  mkdir dockrepo/dockimages/nginx
+fi
+#
+verifynginxexpand
+# - si verifica nginxinstall.json per vedere se l'espansione e' da fare,
+#    ovvero se e' gia' fatta o non e' comunque necessaria:
+#
+#  ritorna:  0  se l'operazione expand non ha prodotto errori
+#           !0  se ci sono stati errori ...
+#
+#  error details in:  .../github-gothings/README.github.gothings
+#
+RETLEVEL=$?
+echo "    <-- expand phase returns code ${RETLEVEL}"
+if [ ${RETLEVEL} -gt 0 ]; then
+  debuglog="Expand phase not good"
+  if [ ${RETLEVEL} -lt 50 ]; then
+    echo
+    bugmessage ERROR "${RETLEVEL}" "    expand phase"
+  else
+    echo
+    bugmessage ERROR "${RETLEVEL}" "    expand phase"
+  fi
+  MENUTRAP=${RETLEVEL}
+  pause
+  exit ${MENUTRAP}
+fi
+pause
+#
+echo
+echo "##################################################  HTDOCS"
+echo "        verify cloud htdocs json expand config file ..."
+# assicurati che il dir htdocs esista in dockimages
+if [[ ! -s "${HOMEDIR}dockrepo/dockimages/htdocs" ]]; then
+  mkdir dockrepo/dockimages/htdocs
+fi
+#
+verifyhtdocsexpand
+# - si verifica htdocsinstall.json per vedere se l'espansione e' da fare,
+#    ovvero se e' gia' fatta o non e' comunque necessaria:
+#
+#  ritorna:  0  se l'operazione expand non ha prodotto errori
+#           !0  se ci sono stati errori ...
+#
+#  error details in:  .../github-gothings/README.github.gothings
+#
+RETLEVEL=$?
+echo "    <-- expand phase returns code ${RETLEVEL}"
+if [ ${RETLEVEL} -gt 0 ]; then
+  debuglog="Expand phase not good"
+  if [ ${RETLEVEL} -lt 50 ]; then
+    echo
+    bugmessage ERROR "${RETLEVEL}" "    expand phase"
+  else
+    echo
+    bugmessage ERROR "${RETLEVEL}" "    expand phase"
+  fi
+  MENUTRAP=${RETLEVEL}
+  pause
+  exit ${MENUTRAP}
+fi
+pause
+echo
+echo "############################"
+echo "          EXPAND phase done."
+#
+echo
+#################################################################################
+#####################################################################  phase INIT
 echo
 echo "    INIT phase starts ..."
 echo
@@ -826,7 +1299,8 @@ fi
 echo "    INIT phase done."
 #
 echo
-######################  phase INSTALL
+#################################################################################
+##################################################################  phase INSTALL
 echo
 echo "    INSTALL phase starts ..."
 echo
